@@ -61,7 +61,7 @@ void PluginManager::scan(const QString &directory)
         QObject *object = loader->instance();
         auto *plugin = qobject_cast<Astraea::PluginInterface *>(object);
         if (!plugin) {
-            emit errorOccurred(QStringLiteral("无法加载插件 %1: %2").arg(file.fileName(), loader->errorString()));
+            emit errorOccurred(QStringLiteral("Could not load plugin %1: %2").arg(file.fileName(), loader->errorString()));
             loader->unload();
             delete loader;
             continue;

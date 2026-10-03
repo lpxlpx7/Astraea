@@ -180,7 +180,7 @@ QWidget *MainWindow::makeDashboard()
     auto *heroText = new QVBoxLayout;
     heroText->addWidget(localizedLabel(QStringLiteral("你的飞行工作台"), QStringLiteral("Your flight desk"), QStringLiteral("eyebrow")));
     heroText->addWidget(localizedLabel(QStringLiteral("一站式连接你的飞行工具。"), QStringLiteral("Your flight tools, in one place."), QStringLiteral("title")));
-    heroText->addWidget(localizedLabel(QStringLiteral("这是一个空白插件外壳。安装插件后，对应功能才会出现在左侧。"), QStringLiteral("Start with an empty shell. Installed plugins appear in the sidebar."), QStringLiteral("subtitle")));
+    heroText->addWidget(localizedLabel(QStringLiteral("这是一个空白插件外壳。安装插件后，对应功能会出现在左侧。"), QStringLiteral("Start with an empty shell. Installed plugins appear in the sidebar."), QStringLiteral("subtitle")));
     heroLayout->addLayout(heroText, 1);
     auto *open = new QPushButton(QStringLiteral("＋  打开插件目录"));
     open->setObjectName(QStringLiteral("primary"));
@@ -326,7 +326,7 @@ QWidget *MainWindow::makePluginPage(const LoadedPlugin &plugin)
     localizeButton(open, QStringLiteral("打开插件"), QStringLiteral("Open plugin"));
     open->setObjectName(QStringLiteral("primary"));
     connect(open, &QPushButton::clicked, this, [this, plugin] {
-        if (QMessageBox::question(this, QStringLiteral("Astraea"), (m_chinese ? QStringLiteral("仅运行可信插件。继续打开 %1？") : QStringLiteral("Only run trusted plugins. Open %1?")).arg(plugin.displayName)) != QMessageBox::Yes) return;
+        if (QMessageBox::question(this, QStringLiteral("Astraea"), QStringLiteral("Only run trusted plugins. Open %1?").arg(plugin.displayName)) != QMessageBox::Yes) return;
         if (plugin.kind == PluginKind::NativeQt && plugin.instance) {
             QDialog dialog(this);
             dialog.setWindowTitle(plugin.displayName);
