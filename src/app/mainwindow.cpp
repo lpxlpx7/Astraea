@@ -308,7 +308,9 @@ void MainWindow::rebuildPluginNavigation()
         m_navigation->addButton(button);
         button->setObjectName(QStringLiteral("sidebarNav"));
         button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        m_navigationLayout->insertWidget(i, button);
+        // Sidebar order is Overview, plugins, Settings. The settings button
+        // already occupies the second fixed slot, so insert plugins before it.
+        m_navigationLayout->insertWidget(i + 1, button);
         const int pageIndex = m_pages->addWidget(makePluginPage(plugins.at(i)));
         m_pluginPageIndexes.append(pageIndex);
         m_pluginButtons.append(button);
@@ -320,25 +322,28 @@ QWidget *MainWindow::makePluginPage(const LoadedPlugin &plugin)
 {
     auto *page = new QWidget;
     auto *layout = column(page);
-    layout->addWidget(label(plugin.displayName, QStringLiteral("title")));
-    layout->addWidget(label(plugin.description, QStringLiteral("subtitle")));
-    auto *open = new QPushButton(m_chinese ? QStringLiteral("打开插件") : QStringLiteral("Open plugin"));
-    localizeButton(open, QStringLiteral("打开插件"), QStringLiteral("Open plugin"));
-    open->setObjectName(QStringLiteral("primary"));
-    connect(open, &QPushButton::clicked, this, [this, plugin] {
-        if (QMessageBox::question(this, QStringLiteral("Astraea"), QStringLiteral("Only run trusted plugins. Open %1?").arg(plugin.displayName)) != QMessageBox::Yes) return;
-        if (plugin.kind == PluginKind::NativeQt && plugin.instance) {
-            QDialog dialog(this);
-            dialog.setWindowTitle(plugin.displayName);
-            dialog.resize(800, 600);
-            auto *dialogLayout = new QVBoxLayout(&dialog);
-            auto *view = plugin.instance->createWidget(&dialog);
-            if (!view) return;
-            dialogLayout->addWidget(view);
-            dialog.exec();
-        } else m_pluginManager.launch(plugin);
-    });
-    layout->addWidget(open, 0, Qt::AlignLeft);
+    if (plugin.kind == PluginKind::NativeQt && plugin.instance) {
+        // Native Qt plugins are embedded directly in the right-hand workspace.
+        auto *view = plugin.instance->createWidget(page);
+        if (view) {
+            layout->addWidget(view, 1);
+        } else {
+            layout->addWidget(label(plugin.displayName, QStringLiteral("title")));
+            layout->addWidget(label(plugin.description, QStringLiteral("subtitle")));
+            layout->addWidget(label(m_chinese ? QStringLiteral("插件没有返回可显示的页面。") : QStringLiteral("The plugin did not provide a view."), QStringLiteral("subtitle")));
+        }
+    } else {
+        layout->addWidget(label(plugin.displayName, QStringLiteral("title")));
+        layout->addWidget(label(plugin.description, QStringLiteral("subtitle")));
+        auto *open = new QPushButton(m_chinese ? QStringLiteral("打开插件") : QStringLiteral("Open plugin"));
+        localizeButton(open, QStringLiteral("打开插件"), QStringLiteral("Open plugin"));
+        open->setObjectName(QStringLiteral("primary"));
+        connect(open, &QPushButton::clicked, this, [this, plugin] {
+            if (QMessageBox::question(this, QStringLiteral("Astraea"), QStringLiteral("Only run trusted plugins. Open %1?").arg(plugin.displayName)) != QMessageBox::Yes) return;
+            m_pluginManager.launch(plugin);
+        });
+        layout->addWidget(open, 0, Qt::AlignLeft);
+    }
     layout->addStretch();
     return page;
 }

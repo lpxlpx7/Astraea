@@ -8,8 +8,8 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
-find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets Network)
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets Network)
+find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets Network Concurrent)
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets Network Concurrent)
 
 option(ASTRAEA_FETCH_QLEMENTINE "Fetch Qlementine when it is available" OFF)
 option(ASTRAEA_DEPLOY_QT "Deploy Qt runtime beside the executable on Windows" ON)
@@ -50,6 +50,36 @@ if(TARGET qlementine)
     target_link_libraries(astraea PRIVATE qlementine)
     target_compile_definitions(astraea PRIVATE ASTRAEA_HAS_QLEMENTINE=1)
 endif()
+
+add_library(msfsmanager SHARED
+    src/plugins/msfsmanager/msfsmanager.cpp
+    src/plugins/msfsmanager/msfsmanager.h
+)
+target_link_libraries(msfsmanager PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Concurrent astraea_plugin_api)
+if(WIN32)
+    add_custom_command(TARGET msfsmanager POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:astraea>/plugins"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:msfsmanager>" "$<TARGET_FILE_DIR:astraea>/plugins")
+endif()
+set_target_properties(msfsmanager PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/plugins
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/plugins
+    ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/plugins)
+
+add_library(pmdgmanager SHARED
+    src/plugins/pmdgmanager/pmdgmanager.cpp
+    src/plugins/pmdgmanager/pmdgmanager.h
+)
+target_link_libraries(pmdgmanager PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Concurrent astraea_plugin_api)
+if(WIN32)
+    add_custom_command(TARGET pmdgmanager POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:astraea>/plugins"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:pmdgmanager>" "$<TARGET_FILE_DIR:astraea>/plugins")
+endif()
+set_target_properties(pmdgmanager PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/plugins
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/plugins
+    ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/plugins)
 
 set_target_properties(astraea PROPERTIES
     WIN32_EXECUTABLE TRUE
