@@ -10,6 +10,8 @@ class QLineEdit;
 class QListWidget;
 class QProgressBar;
 class QPushButton;
+class QDragEnterEvent;
+class QDropEvent;
 
 struct MsfsCommunityEntry
 {
@@ -43,6 +45,7 @@ private slots:
     void scanCommunity();
     void scanFinished();
     void openCommunity();
+    void installPlugin();
 
 private:
     void startScan(bool fullScan);
@@ -52,6 +55,7 @@ private:
     void populatePlugins(const QVector<MsfsCommunityEntry> &entries);
     void openPluginPath(const QString &path);
     void togglePluginPath(const QString &path);
+    void installArchive(const QString &archivePath);
 
     QLineEdit *m_communityPath = nullptr;
     QLabel *m_summary = nullptr;

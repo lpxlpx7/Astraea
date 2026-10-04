@@ -57,11 +57,33 @@ QString readLiveryName(const QString &path)
     return QFileInfo(path).fileName();
 }
 
+QString pmdgAircraftCode(const QString &value);
+
 QString aircraftFor(const QString &package, const QString &livery)
 {
-    const QStringList parts = QDir(package).relativeFilePath(livery).split(QDir::separator(), Qt::SkipEmptyParts);
-    for (int i = 0; i < parts.size(); ++i) if (parts.at(i).compare(QStringLiteral("Airplanes"), Qt::CaseInsensitive) == 0 && i + 1 < parts.size()) return parts.at(i + 1);
-    return QStringLiteral("PMDG");
+    const QString relativePath = QDir::fromNativeSeparators(QDir(package).relativeFilePath(livery));
+    const QStringList parts = relativePath.split(QLatin1Char('/'), Qt::SkipEmptyParts);
+    for (int i = 0; i < parts.size(); ++i) {
+        if (parts.at(i).compare(QStringLiteral("Airplanes"), Qt::CaseInsensitive) == 0 && i + 1 < parts.size()) {
+            // Third-party liveries commonly identify the aircraft solely by
+            // the folder after SimObjects/Airplanes, e.g.
+            // SimObjects/Airplanes/PMDG 737-800/liveries/pmdg/...
+            return pmdgAircraftCode(parts.at(i + 1));
+        }
+    }
+    return pmdgAircraftCode(QFileInfo(package).fileName() + QLatin1Char(' ') + livery);
+}
+
+QString pmdgAircraftCode(const QString &value)
+{
+    const QString folder = value.toLower();
+    if (folder.contains(QStringLiteral("737-600")) || folder.contains(QStringLiteral("737_600")) || folder.contains(QStringLiteral("736"))) return QStringLiteral("736");
+    if (folder.contains(QStringLiteral("737-700")) || folder.contains(QStringLiteral("737_700")) || folder.contains(QStringLiteral("737-7")) || folder.contains(QStringLiteral("737_7")) || folder.contains(QStringLiteral("7377"))) return QStringLiteral("737");
+    if (folder.contains(QStringLiteral("737-800")) || folder.contains(QStringLiteral("737_800")) || folder.contains(QStringLiteral("738"))) return QStringLiteral("738");
+    if (folder.contains(QStringLiteral("737-900")) || folder.contains(QStringLiteral("737_900")) || folder.contains(QStringLiteral("739"))) return QStringLiteral("739");
+    if (folder.contains(QStringLiteral("777-200")) || folder.contains(QStringLiteral("777_200")) || folder.contains(QStringLiteral("77er")) || folder.contains(QStringLiteral("772"))) return QStringLiteral("772");
+    if (folder.contains(QStringLiteral("777-300")) || folder.contains(QStringLiteral("777_300")) || folder.contains(QStringLiteral("77w")) || folder.contains(QStringLiteral("77w"))) return QStringLiteral("77W");
+    return value.trimmed().isEmpty() ? QStringLiteral("PMDG") : value;
 }
 
 QString safeName(QString name)
@@ -156,7 +178,7 @@ void PmdgManagerWidget::startScan(bool fullScan)
     if (community.isEmpty() || !QDir(community).exists()) { m_summary->setText(QStringLiteral("尚未设置有效的 Community 文件夹。")); return; }
     QSettings().setValue(QStringLiteral("msfs/communityPath"), community);
     m_summary->setText(QStringLiteral("正在扫描 PMDG 涂装…"));
-    const QString cachePath = ScanCache::filePath(QStringLiteral("pmdg"), community);
+    const QString cachePath = ScanCache::filePath(QStringLiteral("pmdg-v3"), community);
     auto *watcher = new QFutureWatcher<ScanCache::Result<PmdgLiveryEntry>>(this);
     connect(watcher, &QFutureWatcher<ScanCache::Result<PmdgLiveryEntry>>::finished, this, [this, watcher, generation] {
         if (generation != m_scanGeneration) { watcher->deleteLater(); return; }
