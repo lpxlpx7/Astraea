@@ -18,6 +18,7 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QProcess>
+#include <QDesktopServices>
 #include <QPushButton>
 #include <QStandardPaths>
 #include <QSettings>
@@ -26,6 +27,7 @@
 #include <QVBoxLayout>
 #include <QGroupBox>
 #include <QRegularExpression>
+#include <QUrl>
 #include <QtConcurrent>
 
 namespace {
@@ -72,6 +74,27 @@ QString aircraftFor(const QString &package, const QString &livery)
         }
     }
     return pmdgAircraftCode(QFileInfo(package).fileName() + QLatin1Char(' ') + livery);
+}
+
+QString aircraftFolderFor(const QString &package, const QString &livery)
+{
+    const QString relativePath = QDir::fromNativeSeparators(QDir(package).relativeFilePath(livery));
+    const QStringList parts = relativePath.split(QLatin1Char('/'), Qt::SkipEmptyParts);
+    for (int i = 0; i + 1 < parts.size(); ++i) {
+        if (parts.at(i).compare(QStringLiteral("Airplanes"), Qt::CaseInsensitive) == 0) return parts.at(i + 1);
+    }
+    return {};
+}
+
+QString fallbackAircraftFolder(const QString &code)
+{
+    if (code == QStringLiteral("738")) return QStringLiteral("PMDG 737-800");
+    if (code == QStringLiteral("739")) return QStringLiteral("PMDG 737-900");
+    if (code == QStringLiteral("772")) return QStringLiteral("PMDG 777-200ER");
+    if (code == QStringLiteral("77W")) return QStringLiteral("PMDG 777-300ER");
+    if (code == QStringLiteral("736")) return QStringLiteral("PMDG 737-600");
+    if (code == QStringLiteral("737")) return QStringLiteral("PMDG 737-700");
+    return code;
 }
 
 QString pmdgAircraftCode(const QString &value)
@@ -242,7 +265,7 @@ void PmdgManagerWidget::populate(const QVector<PmdgLiveryEntry> &entries)
     m_summary->setText(QStringLiteral("已找到 %1 个 PMDG 涂装").arg(entries.size()));
 }
 
-void PmdgManagerWidget::openPath(const QString &path) { QProcess::startDetached(QStringLiteral("explorer.exe"), {QStringLiteral("/select,%1").arg(QDir::toNativeSeparators(path))}); }
+void PmdgManagerWidget::openPath(const QString &path) { QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(path).absoluteFilePath())); }
 
 void PmdgManagerWidget::installLivery()
 {
@@ -257,8 +280,18 @@ void PmdgManagerWidget::installLivery()
     if (source.endsWith(QStringLiteral(".zip"), Qt::CaseInsensitive)) { QProcess extract; extract.start(QStringLiteral("tar"), {QStringLiteral("-xf"), source, QStringLiteral("-C"), temporary.path()}); if (!extract.waitForFinished(120000) || extract.exitCode() != 0) { setStatus(QStringLiteral("解压失败"), true); return; } root = findLiveryFolder(temporary.path()); }
     else root = findLiveryFolder(source);
     if (root.isEmpty()) { setStatus(QStringLiteral("未找到 livery.cfg"), true); return; }
-    QString name = safeName(QFileInfo(source).completeBaseName()); QString destination = QDir(community).filePath(QStringLiteral("pmdg-%1").arg(name)); int index = 2; while (QDir(destination).exists()) destination = QDir(community).filePath(QStringLiteral("pmdg-%1-%2").arg(name).arg(index++));
-    const QString target = QDir(destination).filePath(QStringLiteral("SimObjects/Airplanes/%1/liveries/pmdg/%2").arg(m_aircraft->currentText(), QFileInfo(root).fileName()));
+    const QString liveryName = readLiveryName(root);
+    QString name = safeName(liveryName);
+    if (name == QStringLiteral("pmdg-livery") || name.isEmpty()) name = safeName(QFileInfo(source).completeBaseName());
+    QString destination = QDir(community).filePath(QStringLiteral("pmdg-%1").arg(name));
+    int index = 2;
+    while (QDir(destination).exists()) destination = QDir(community).filePath(QStringLiteral("pmdg-%1-%2").arg(name).arg(index++));
+    // Prefer the aircraft directory included by the creator. This prevents a
+    // 777 livery from being installed under the default 737-800 selection.
+    QString aircraftFolder = aircraftFolderFor(temporary.path(), root);
+    if (aircraftFolder.isEmpty() && !source.endsWith(QStringLiteral(".zip"), Qt::CaseInsensitive)) aircraftFolder = aircraftFolderFor(source, root);
+    if (aircraftFolder.isEmpty()) aircraftFolder = fallbackAircraftFolder(pmdgAircraftCode(m_aircraft->currentText()));
+    const QString target = QDir(destination).filePath(QStringLiteral("SimObjects/Airplanes/%1/liveries/pmdg/%2").arg(aircraftFolder, QFileInfo(root).fileName()));
     QString error; if (!copyDirectory(root, target, &error)) { setStatus(QStringLiteral("安装失败：%1").arg(error), true); return; }
     QDir().mkpath(destination);
     QFile layout(QDir(destination).filePath(QStringLiteral("layout.json")));

@@ -14,6 +14,7 @@
 #include <QListWidget>
 #include <QProgressBar>
 #include <QProcess>
+#include <QDesktopServices>
 #include <QPushButton>
 #include <QGroupBox>
 #include <QStandardPaths>
@@ -402,7 +403,9 @@ void MsfsManagerWidget::populatePlugins(const QVector<MsfsCommunityEntry> &entri
 
 void MsfsManagerWidget::openPluginPath(const QString &path)
 {
-    QProcess::startDetached(QStringLiteral("explorer.exe"), {QStringLiteral("/select,%1").arg(QDir::toNativeSeparators(path))});
+    // Opening the folder directly is more reliable than explorer's /select
+    // syntax, which can fall back to Documents for paths containing spaces.
+    QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(path).absoluteFilePath()));
 }
 
 void MsfsManagerWidget::togglePluginPath(const QString &path)
