@@ -28,6 +28,12 @@
 #include <QTemporaryDir>
 #include <QUrl>
 #include <QRegularExpression>
+#include <QEvent>
+#include <QMouseEvent>
+#include <QScrollArea>
+#include <QFrame>
+#include <QFontMetrics>
+#include <QSplitter>
 #include <functional>
 #include <QtConcurrent>
 
@@ -176,8 +182,7 @@ QString categoryFor(const QString &path)
     }
     if (livery) return QStringLiteral("涂装");
     if (aircraft) return QStringLiteral("机模");
-    if (airport) return QStringLiteral("机场/环境");
-    if (scenery) return QStringLiteral("地景");
+    if (airport || scenery) return QStringLiteral("机场/环境");
     if (library) return QStringLiteral("库/资源");
     if (functional) return QStringLiteral("功能插件");
     if (utility) return QStringLiteral("工具/组件");
@@ -236,7 +241,14 @@ MsfsManagerWidget::MsfsManagerWidget(QWidget *parent) : QWidget(parent)
     pathRow->addWidget(browse);
     layout->addLayout(pathRow);
 
-    auto *box = new QGroupBox(QStringLiteral("Community 插件管理"), this);
+    auto *splitter = new QSplitter(Qt::Horizontal, this);
+    splitter->setHandleWidth(6);
+    splitter->setStyleSheet(QStringLiteral(
+        "QSplitter::handle { background: #283b58; }"
+        "QSplitter::handle:hover { background: #395578; }"
+    ));
+
+    auto *box = new QGroupBox(QStringLiteral("Community 插件管理"), splitter);
     auto *boxLayout = new QVBoxLayout(box);
     auto *actions = new QHBoxLayout;
     m_scanButton = new QPushButton(QStringLiteral("扫描 Community"), box);
@@ -262,7 +274,44 @@ MsfsManagerWidget::MsfsManagerWidget(QWidget *parent) : QWidget(parent)
     // The host's generic QListWidget item padding otherwise clips embedded widgets.
     m_plugins->setStyleSheet(QStringLiteral("QListWidget::item { padding: 0px; margin: 0px; }"));
     boxLayout->addWidget(m_plugins, 1);
-    layout->addWidget(box, 1);
+    splitter->addWidget(box);
+
+    // Category statistics widget
+    auto *statsBox = new QGroupBox(QStringLiteral("类别占用统计"), splitter);
+    statsBox->setMaximumWidth(380);
+    statsBox->setMinimumWidth(320);
+    statsBox->setStyleSheet(QStringLiteral("QGroupBox { background-color: #161d2b; border: 1px solid #283b58; border-radius: 8px; padding-top: 18px; }"));
+    auto *statsLayout = new QVBoxLayout(statsBox);
+    statsLayout->setContentsMargins(12, 16, 12, 12);
+
+    auto *scrollArea = new QScrollArea(statsBox);
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setFrameShape(QFrame::NoFrame);
+    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    scrollArea->setStyleSheet(QStringLiteral(
+        "QScrollArea { background-color: #161d2b; border: none; }"
+        "QScrollBar:vertical { background: #0f131c; width: 8px; border-radius: 4px; }"
+        "QScrollBar::handle:vertical { background: #283b58; border-radius: 4px; min-height: 20px; }"
+        "QScrollBar::handle:vertical:hover { background: #395578; }"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }"
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: none; }"
+    ));
+
+    m_categoryStatsWidget = new QWidget(scrollArea);
+    m_categoryStatsWidget->setStyleSheet(QStringLiteral("QWidget { background-color: #161d2b; }"));
+    m_categoryStatsWidget->setLayout(new QVBoxLayout);
+    m_categoryStatsWidget->layout()->setContentsMargins(0, 0, 8, 0);
+    scrollArea->setWidget(m_categoryStatsWidget);
+
+    statsLayout->addWidget(scrollArea);
+    splitter->addWidget(statsBox);
+
+    // Set initial sizes (70% for plugin list, 30% for stats)
+    splitter->setStretchFactor(0, 7);
+    splitter->setStretchFactor(1, 3);
+
+    layout->addWidget(splitter, 1);
     m_status = new QLabel(this);
     layout->addWidget(m_status);
 
@@ -399,6 +448,175 @@ void MsfsManagerWidget::populatePlugins(const QVector<MsfsCommunityEntry> &entri
     }
     m_plugins->setUpdatesEnabled(true);
     m_summary->setText(QStringLiteral("插件包：%1（启用 %2，禁用 %3）").arg(entries.size()).arg(enabled).arg(entries.size() - enabled));
+    updateCategoryStats(entries);
+}
+
+void MsfsManagerWidget::updateCategoryStats(const QVector<MsfsCommunityEntry> &entries)
+{
+    QMap<QString, CategoryStats> stats;
+    QMap<QString, QVector<MsfsCommunityEntry>> categoryEntries;
+    qint64 totalSize = 0;
+
+    for (const auto &entry : entries) {
+        if (!stats.contains(entry.category)) {
+            stats[entry.category] = CategoryStats{entry.category, 0, 0};
+        }
+        stats[entry.category].size += entry.size;
+        stats[entry.category].count++;
+        categoryEntries[entry.category].append(entry);
+        totalSize += entry.size;
+    }
+
+    // Clear previous widgets
+    QLayout *layout = m_categoryStatsWidget->layout();
+    while (QLayoutItem *item = layout->takeAt(0)) {
+        if (item->widget()) item->widget()->deleteLater();
+        delete item;
+    }
+
+    // Sort by size descending
+    QList<CategoryStats> sortedStats = stats.values();
+    std::sort(sortedStats.begin(), sortedStats.end(), [](const CategoryStats &a, const CategoryStats &b) {
+        return a.size > b.size;
+    });
+
+    // Add total summary
+    auto *totalLabel = new QLabel(QStringLiteral("<b>总计: %1</b>").arg(formatBytes(totalSize)));
+    totalLabel->setStyleSheet(QStringLiteral("padding: 8px 0; font-size: 14px;"));
+    layout->addWidget(totalLabel);
+
+    // Add each category
+    for (const auto &stat : sortedStats) {
+        auto *categoryWidget = new QWidget(m_categoryStatsWidget);
+        auto *categoryLayout = new QVBoxLayout(categoryWidget);
+        categoryLayout->setContentsMargins(0, 12, 0, 0);
+        categoryLayout->setSpacing(6);
+
+        double percentage = totalSize > 0 ? (stat.size * 100.0 / totalSize) : 0;
+
+        // Category header (clickable)
+        auto *headerWidget = new QWidget(categoryWidget);
+        headerWidget->setCursor(Qt::PointingHandCursor);
+        auto *headerLayout = new QVBoxLayout(headerWidget);
+        headerLayout->setContentsMargins(0, 0, 0, 0);
+        headerLayout->setSpacing(4);
+
+        // Category name and size
+        auto *topRow = new QHBoxLayout;
+        topRow->setSpacing(8);
+        auto *expandIcon = new QLabel(QStringLiteral("▶"), headerWidget);
+        expandIcon->setFixedWidth(14);
+        expandIcon->setStyleSheet(QStringLiteral("font-size: 11px; color: #9ca3af;"));
+        auto *categoryLabel = new QLabel(QStringLiteral("<b>%1</b>").arg(stat.category), headerWidget);
+        categoryLabel->setStyleSheet(QStringLiteral("font-size: 13px;"));
+        categoryLabel->setWordWrap(false);
+        categoryLabel->setMinimumWidth(0);
+        categoryLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        auto *sizeLabel = new QLabel(QStringLiteral("<span style='font-size: 12px;'>%1</span>").arg(formatBytes(stat.size)), headerWidget);
+        sizeLabel->setTextFormat(Qt::RichText);
+        sizeLabel->setAlignment(Qt::AlignRight);
+        sizeLabel->setStyleSheet(QStringLiteral("color: #9ca3af;"));
+        sizeLabel->setMinimumWidth(70);
+        topRow->addWidget(expandIcon);
+        topRow->addWidget(categoryLabel, 1);
+        topRow->addWidget(sizeLabel, 0);
+        headerLayout->addLayout(topRow);
+
+        // Progress bar
+        auto *bar = new QProgressBar(headerWidget);
+        bar->setRange(0, 100);
+        bar->setValue(static_cast<int>(percentage));
+        bar->setTextVisible(false);
+        bar->setMaximumHeight(6);
+        bar->setStyleSheet(QStringLiteral(
+            "QProgressBar { background: #161d2b; border: none; border-radius: 3px; }"
+            "QProgressBar::chunk { background: #38bdf8; border-radius: 3px; }"
+        ));
+        headerLayout->addWidget(bar);
+
+        // Count and percentage
+        auto *statsRow = new QHBoxLayout;
+        auto *countLabel = new QLabel(QStringLiteral("%1 个插件").arg(stat.count), headerWidget);
+        countLabel->setStyleSheet(QStringLiteral("color: #6b7280; font-size: 11px;"));
+        auto *percentLabel = new QLabel(QStringLiteral("%1%").arg(percentage, 0, 'f', 1), headerWidget);
+        percentLabel->setStyleSheet(QStringLiteral("color: #6b7280; font-size: 11px;"));
+        percentLabel->setAlignment(Qt::AlignRight);
+        statsRow->addWidget(countLabel);
+        statsRow->addWidget(percentLabel);
+        headerLayout->addLayout(statsRow);
+
+        categoryLayout->addWidget(headerWidget);
+
+        // Details container (collapsible)
+        auto *detailsWidget = new QWidget(categoryWidget);
+        detailsWidget->setVisible(false);
+        auto *detailsLayout = new QVBoxLayout(detailsWidget);
+        detailsLayout->setContentsMargins(20, 8, 0, 8);
+        detailsLayout->setSpacing(6);
+
+        // Sort entries by size
+        QVector<MsfsCommunityEntry> categoryItems = categoryEntries[stat.category];
+        std::sort(categoryItems.begin(), categoryItems.end(), [](const MsfsCommunityEntry &a, const MsfsCommunityEntry &b) {
+            return a.size > b.size;
+        });
+
+        // Add all items (they will scroll)
+        for (const auto &entry : categoryItems) {
+            auto *itemWidget = new QWidget(detailsWidget);
+            auto *itemLayout = new QHBoxLayout(itemWidget);
+            itemLayout->setContentsMargins(0, 2, 0, 2);
+            itemLayout->setSpacing(8);
+
+            auto *nameLabel = new QLabel(entry.name, itemWidget);
+            nameLabel->setStyleSheet(QStringLiteral("color: #9ca3af; font-size: 11px;"));
+            nameLabel->setWordWrap(false);
+            nameLabel->setTextFormat(Qt::PlainText);
+            nameLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+            nameLabel->setMinimumWidth(0);
+            QFontMetrics metrics(nameLabel->font());
+            QString elidedText = metrics.elidedText(entry.name, Qt::ElideMiddle, 180);
+            nameLabel->setText(elidedText);
+            nameLabel->setToolTip(entry.name);
+
+            auto *sizeLabel = new QLabel(formatBytes(entry.size), itemWidget);
+            sizeLabel->setStyleSheet(QStringLiteral("color: #6b7280; font-size: 11px;"));
+            sizeLabel->setAlignment(Qt::AlignRight);
+            sizeLabel->setMinimumWidth(60);
+
+            itemLayout->addWidget(nameLabel, 1);
+            itemLayout->addWidget(sizeLabel, 0);
+            detailsLayout->addWidget(itemWidget);
+        }
+
+        categoryLayout->addWidget(detailsWidget);
+
+        layout->addWidget(categoryWidget);
+
+        // Create event filter for click handling
+        class ClickFilter : public QObject {
+        public:
+            ClickFilter(QWidget *details, QLabel *icon, QObject *parent)
+                : QObject(parent), m_details(details), m_icon(icon) {}
+        protected:
+            bool eventFilter(QObject *, QEvent *event) override {
+                if (event->type() == QEvent::MouseButtonPress) {
+                    bool visible = m_details->isVisible();
+                    m_details->setVisible(!visible);
+                    m_icon->setText(!visible ? QStringLiteral("▼") : QStringLiteral("▶"));
+                    return true;
+                }
+                return false;
+            }
+        private:
+            QWidget *m_details;
+            QLabel *m_icon;
+        };
+
+        auto *filter = new ClickFilter(detailsWidget, expandIcon, headerWidget);
+        headerWidget->installEventFilter(filter);
+    }
+
+    static_cast<QVBoxLayout*>(layout)->addStretch();
 }
 
 void MsfsManagerWidget::openPluginPath(const QString &path)
