@@ -22,6 +22,13 @@ struct MsfsCommunityEntry
     qint64 size = 0;
 };
 
+struct CategoryStats
+{
+    QString category;
+    qint64 size = 0;
+    int count = 0;
+};
+
 class MsfsManagerPlugin final : public QObject, public Astraea::PluginInterface
 {
     Q_OBJECT
@@ -53,6 +60,7 @@ private:
     void setStatus(const QString &message, bool error = false);
     void setScanBusy(bool busy);
     void populatePlugins(const QVector<MsfsCommunityEntry> &entries);
+    void updateCategoryStats(const QVector<MsfsCommunityEntry> &entries);
     void openPluginPath(const QString &path);
     void togglePluginPath(const QString &path);
     void installArchive(const QString &archivePath);
@@ -61,6 +69,7 @@ private:
     QLabel *m_summary = nullptr;
     QLabel *m_status = nullptr;
     QListWidget *m_plugins = nullptr;
+    QWidget *m_categoryStatsWidget = nullptr;
     QProgressBar *m_progress = nullptr;
     QPushButton *m_scanButton = nullptr;
     QObject *m_scanWatcher = nullptr;
